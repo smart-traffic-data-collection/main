@@ -1,5 +1,8 @@
 import rclpy            # Importiert die ROS2 Python Client Library
 from rclpy.node import Node         # Importiert die Node-Basisklasse
+from rclpy.qos import QoSProfile         # QoS-Konfiguration für ROS2 Publisher/Subscriber
+from rclpy.qos import ReliabilityPolicy            # Legt fest, wie zuverlässig Nachrichten übertragen werden
+from rclpy.qos import DurabilityPolicy            # Legt fest, ob Nachrichten für spätere Subscriber gespeichert werden
 from visualization_msgs.msg import Marker, MarkerArray
 import lanelet2         # Importiert die Lanelet2 Bibliothek
 from lanelet2.io import load        # Importiert Funktion zum Laden von Lanelet2 Maps
@@ -9,7 +12,13 @@ class LaneletVisualizer(Node):          # Definiert die Klasse LaneletVisualizer
     def __init__(self):         # Konstruktor-Methode der Klasse
         super().__init__('lanelet_visualizer') # Initialisiert die Basisklasse Node mit dem Namen 'lanelet_visualizer'
 
-        self.pub = self.create_publisher(MarkerArray, '/lanelet_map', 10)   # Erstellt einen Publisher für MarkerArray auf dem Topic '/lanelet_map'
+        qos_profile = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL
+        )
+
+        self.pub = self.create_publisher(MarkerArray, '/lanelet_map', qos_profile)   # Erstellt einen Publisher für MarkerArray auf dem Topic '/lanelet_map'
 
         origin = lanelet2.io.Origin(48.77106330244843, 11.439444972723058)  # Definiert den geografischen Ursprung (Breitengrad, Längengrad) für die Projektion
         projector = UtmProjector(origin)        # Erstellt einen UTM-Projektor basierend auf dem definierten Ursprung
@@ -32,7 +41,7 @@ class LaneletVisualizer(Node):          # Definiert die Klasse LaneletVisualizer
                 self.get_logger().info(f"Lanelet ID {ll.id} | left pts: {len(ll.leftBound)} | right pts: {len(ll.rightBound)}"
                 )
 
-        self.timer = self.create_timer(1.0, self.publish_map)       # Erstellt einen Timer, der jede Sekunde die Funktion publish_map aufruft ANPASSBAR
+        self.publish_map()      # Erstellt einen Timer, der jede Sekunde die Funktion publish_map aufruft ANPASSBAR
 
     def publish_map(self):
 
@@ -103,10 +112,10 @@ class LaneletVisualizer(Node):          # Definiert die Klasse LaneletVisualizer
 
         self.pub.publish(marker_array)
         
-def main():
+def main():         # Hauptfunktion zum Starten des Nodes
     rclpy.init()
     node = LaneletVisualizer()
     rclpy.spin(node)
 
-if __name__ == '__main__':
-    main()
+if __name__ == '__main__':         # Überprüft, ob das Skript direkt ausgeführt wird
+    main()           # Ruft die Hauptfunktion auf
