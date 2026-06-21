@@ -1,16 +1,21 @@
-import rclpy            # Importiert die ROS2 Python Client Library
-from rclpy.node import Node         # Importiert die Node-Basisklasse
-from rclpy.qos import QoSProfile         # QoS-Konfiguration für ROS2 Publisher/Subscriber
-from rclpy.qos import ReliabilityPolicy            # Legt fest, wie zuverlässig Nachrichten übertragen werden
-from rclpy.qos import DurabilityPolicy            # Legt fest, ob Nachrichten für spätere Subscriber gespeichert werden
-from visualization_msgs.msg import Marker, MarkerArray
-import lanelet2         # Importiert die Lanelet2 Bibliothek
-from lanelet2.io import load        # Importiert Funktion zum Laden von Lanelet2 Maps
-from lanelet2.projection import UtmProjector        # Importiert UTM-Projektor für Koordinatenumrechnung
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy
 
-class LaneletVisualizer(Node):          # Definiert die Klasse LaneletVisualizer, die von Node erbt
-    def __init__(self):         # Konstruktor-Methode der Klasse
-        super().__init__('lanelet_visualizer') # Initialisiert die Basisklasse Node mit dem Namen 'lanelet_visualizer'
+from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import Point
+
+import lanelet2
+from lanelet2.io import load
+from lanelet2.projection import UtmProjector
+
+
+class LaneletVisualizer(Node):
+
+    def __init__(self):
+        super().__init__('lanelet_visualizer')
 
         qos_profile = QoSProfile(
             depth=1,
@@ -18,104 +23,211 @@ class LaneletVisualizer(Node):          # Definiert die Klasse LaneletVisualizer
             durability=DurabilityPolicy.TRANSIENT_LOCAL
         )
 
-        self.pub = self.create_publisher(MarkerArray, '/lanelet_map', qos_profile)   # Erstellt einen Publisher für MarkerArray auf dem Topic '/lanelet_map'
+        self.pub = self.create_publisher(
+            MarkerArray,
+            '/lanelet_map',
+            qos_profile
+        )
 
-        origin = lanelet2.io.Origin(48.77106330244843, 11.439444972723058)  # Definiert den geografischen Ursprung (Breitengrad, Längengrad) für die Projektion
-        projector = UtmProjector(origin)        # Erstellt einen UTM-Projektor basierend auf dem definierten Ursprung
+        origin = lanelet2.io.Origin(
+            48.77106330244843,
+            11.439444972723058
+        )
 
-        self.map = load("/home/adrian/Schreibtisch/ros2_ws/src/map_publisher/map_publisher/crossings_lanelet2map.osm", projector)         # Lädt die Lanelet2-Karte aus der angegebenen OSM-Datei
+        projector = UtmProjector(origin)
 
-        # DEBUG: Welche Datei wird geladen?
-        self.get_logger().info("Loaded map: /home/adrian/ros2_ws/src/map_test/crossings_lanelet2map.osm")     # Loggt den Pfad der geladenen Karte
-        
-        # DEBUG: Anzahl Lanelets
-        lanelet_count = len(self.map.laneletLayer)      # Ermittelt die Anzahl der Lanelets in der Karte
-        self.get_logger().info(f"Number of lanelets: {lanelet_count}")          # Loggt die Anzahl der gefundenen Lanelets
-        
-        # Wenn keine Lanelets vorhanden sind -> sofort abbrechen
-        if lanelet_count == 0:          # Überprüft, ob die Lanelet-Ebene leer ist
-            self.get_logger().error("NO LANELETS FOUND → Check your OSM file!")     # Loggt eine Fehlermeldung bei leeren Karten
+        self.map = load(
+            "/home/adrian/Schreibtisch/ros2_ws/src/map_publisher/map_publisher/crossings_lanelet2map.osm",
+            projector
+        )
+
+        self.get_logger().info(
+            "Loaded map: /home/adrian/Schreibtisch/ros2_ws/src/map_publisher/map_publisher/crossings_lanelet2map.osm"
+        )
+
+        lanelet_count = len(self.map.laneletLayer)
+
+        self.get_logger().info(
+            f"Number of lanelets: {lanelet_count}"
+        )
+
+        if lanelet_count == 0:
+            self.get_logger().error(
+                "NO LANELETS FOUND → Check your OSM file!"
+            )
         else:
-            # 🔍 Details zu jedem Lanelet
-            for ll in self.map.laneletLayer:        # Iteriert über jedes einzelne Lanelet in der Karte
-                self.get_logger().info(f"Lanelet ID {ll.id} | left pts: {len(ll.leftBound)} | right pts: {len(ll.rightBound)}"
+            for ll in self.map.laneletLayer:
+
+                subtype = (
+                    ll.attributes["subtype"]
+                    if "subtype" in ll.attributes
+                    else "unknown"
                 )
 
-        self.publish_map()      # Erstellt einen Timer, der jede Sekunde die Funktion publish_map aufruft ANPASSBAR
+                self.get_logger().info(
+                    f"Lanelet ID {ll.id} | subtype: {subtype}"
+                )
+
+        self.publish_map()
+
+    def get_lanelet_color(self, subtype):
+        """
+        Returns RGB color tuple based on lanelet subtype.
+        """
+
+        # Vehicle lanes
+        if subtype == "road":
+            return (1.0, 0.0, 0.0)      # Red
+
+        # Bicycle infrastructure
+        elif subtype == "bicycle_lane":
+            return (0.0, 0.0, 1.0)      # Blue
+
+        # Pedestrian infrastructure
+        elif subtype in [
+            "walkway",
+            "shared_walkway",
+            "crosswalk"
+        ]:
+            return (0.0, 1.0, 0.0)      # Green
+
+        # Parking
+        elif subtype == "parking":
+            return (0.5, 0.5, 0.5)      # Grey
+
+        # Unknown
+        else:
+            return (1.0, 1.0, 1.0)      # White
 
     def publish_map(self):
 
-        marker_array = MarkerArray()        # Erstellt ein neues MarkerArray
+        marker_array = MarkerArray()
 
-        # Ursprung
         first_lanelet = next(iter(self.map.laneletLayer))
+
         origin_x = first_lanelet.centerline[0].x
         origin_y = first_lanelet.centerline[0].y
 
-        from geometry_msgs.msg import Point
-
         for i, lanelet in enumerate(self.map.laneletLayer):
 
-            # -------- CENTERLINE --------
+            subtype = (
+                lanelet.attributes["subtype"]
+                if "subtype" in lanelet.attributes
+                else ""
+            )
+
+            r, g, b = self.get_lanelet_color(subtype)
+
+            # ------------------------------
+            # CENTERLINE
+            # ------------------------------
             center_marker = Marker()
+
             center_marker.header.frame_id = "map"
+            center_marker.ns = "centerlines"
+
             center_marker.id = i
+
             center_marker.type = Marker.LINE_STRIP
-            center_marker.scale.x = 0.2
-            center_marker.color.g = 1.0
+            center_marker.action = Marker.ADD
+
+            center_marker.scale.x = 0.25
+
+            center_marker.color.r = r
+            center_marker.color.g = g
+            center_marker.color.b = b
             center_marker.color.a = 1.0
 
             for pt in lanelet.centerline:
+
                 p = Point()
+
                 p.x = pt.x - origin_x
                 p.y = pt.y - origin_y
                 p.z = 0.0
+
                 center_marker.points.append(p)
 
             marker_array.markers.append(center_marker)
 
-            # -------- LEFT BOUND --------
+            # ------------------------------
+            # LEFT BOUNDARY
+            # ------------------------------
             left_marker = Marker()
+
             left_marker.header.frame_id = "map"
+            left_marker.ns = "left_bounds"
+
             left_marker.id = i + 1000
+
             left_marker.type = Marker.LINE_STRIP
-            left_marker.scale.x = 0.1
-            left_marker.color.r = 1.0
-            left_marker.color.a = 1.0
+            left_marker.action = Marker.ADD
+
+            left_marker.scale.x = 0.05
+
+            left_marker.color.r = r
+            left_marker.color.g = g
+            left_marker.color.b = b
+            left_marker.color.a = 0.6
 
             for pt in lanelet.leftBound:
+
                 p = Point()
+
                 p.x = pt.x - origin_x
                 p.y = pt.y - origin_y
                 p.z = 0.0
+
                 left_marker.points.append(p)
 
             marker_array.markers.append(left_marker)
 
-            # -------- RIGHT BOUND --------
+            # ------------------------------
+            # RIGHT BOUNDARY
+            # ------------------------------
             right_marker = Marker()
+
             right_marker.header.frame_id = "map"
+            right_marker.ns = "right_bounds"
+
             right_marker.id = i + 2000
+
             right_marker.type = Marker.LINE_STRIP
-            right_marker.scale.x = 0.1
-            right_marker.color.b = 1.0
-            right_marker.color.a = 1.0
+            right_marker.action = Marker.ADD
+
+            right_marker.scale.x = 0.05
+
+            right_marker.color.r = r
+            right_marker.color.g = g
+            right_marker.color.b = b
+            right_marker.color.a = 0.6
 
             for pt in lanelet.rightBound:
+
                 p = Point()
+
                 p.x = pt.x - origin_x
                 p.y = pt.y - origin_y
                 p.z = 0.0
+
                 right_marker.points.append(p)
 
             marker_array.markers.append(right_marker)
 
         self.pub.publish(marker_array)
-        
-def main():         # Hauptfunktion zum Starten des Nodes
+
+
+def main():
     rclpy.init()
+
     node = LaneletVisualizer()
+
     rclpy.spin(node)
 
-if __name__ == '__main__':         # Überprüft, ob das Skript direkt ausgeführt wird
-    main()           # Ruft die Hauptfunktion auf
+    node.destroy_node()
+
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
