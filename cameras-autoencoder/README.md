@@ -52,3 +52,4 @@ python vqvae_decode_v4.py --mode thermal --n 0
 * `--npy` : Path to custom indices file (default auto-detects from mode).
 * `--model` : Path to specific weights file (default auto-detects from mode).
 * `--output_dir` : Path to save the reconstructed images (defaults to `{mode}_vqvae_decoded`).
+* `--stride` : Take every Nth image from the dataset (default: `1`, no stride).
