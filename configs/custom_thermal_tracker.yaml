@@ -1,0 +1,10 @@
+# Tracker settings tailored for Thermal/Infrared Camera feeds
+tracker_type: bytetrack
+track_high_thresh: 0.55
+track_low_thresh: 0.10
+new_track_thresh: 0.60
+track_buffer: 60
+match_thresh: 0.8
+# Mandatory Ultralytics boilerplate parameters
+fuse_score: True
+gmc_method: sparseOptFlow

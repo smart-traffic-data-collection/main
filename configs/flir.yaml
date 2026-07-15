@@ -1,0 +1,10 @@
+# flir.yaml - Phase 1 Pre-Training Map
+path: /media/pink-rabbit/Data/SmartTrafficMonitoring/experiment_v2x/data/flir_dataset/FLIR_ADAS_v2
+train: images_thermal_train/images  # Points to your FLIR training images
+val: images_thermal_val/images      # Points to your FLIR validation images
+
+# Classes must match what we mapped in the UrbanIng script!
+names:
+  0: person
+  1: bicycle
+  2: car

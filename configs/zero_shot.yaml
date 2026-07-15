@@ -1,0 +1,8 @@
+path: /media/pink-rabbit/Data/SmartTrafficMonitoring/experiment_v2x/data/urbaning_val
+train: images
+val: images
+
+names:
+  0: person
+  1: bicycle
+  2: car
