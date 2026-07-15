@@ -44,11 +44,11 @@ class VQVAEAutoencoder(nn.Module):
     def __init__(self, in_channels=3, num_embeddings=512, embedding_dim=256):
         super().__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, 32,  4, stride=2, padding=1),
-            nn.BatchNorm2d(32),  nn.ReLU(),
-            nn.Conv2d(32,  64,  4, stride=2, padding=1),
-            nn.BatchNorm2d(64),  nn.ReLU(),
-            nn.Conv2d(64,  128, 4, stride=2, padding=1),
+            nn.Conv2d(in_channels, 32, 4, stride=2, padding=1),
+            nn.BatchNorm2d(32), nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2, padding=1),
+            nn.BatchNorm2d(64), nn.ReLU(),
+            nn.Conv2d(64, 128, 4, stride=2, padding=1),
             nn.BatchNorm2d(128), nn.ReLU(),
             nn.Conv2d(128, 256, 4, stride=2, padding=1),
             nn.BatchNorm2d(256), nn.ReLU(),
@@ -60,10 +60,10 @@ class VQVAEAutoencoder(nn.Module):
             nn.BatchNorm2d(256), nn.ReLU(),
             nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),
             nn.BatchNorm2d(128), nn.ReLU(),
-            nn.ConvTranspose2d(128, 64,  4, stride=2, padding=1),
-            nn.BatchNorm2d(64),  nn.ReLU(),
-            nn.ConvTranspose2d(64,  32,  4, stride=2, padding=1),
-            nn.BatchNorm2d(32),  nn.ReLU(),
+            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),
+            nn.BatchNorm2d(64), nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1),
+            nn.BatchNorm2d(32), nn.ReLU(),
             nn.ConvTranspose2d(32, in_channels, 4, stride=2, padding=1),
             nn.Sigmoid()
         )
@@ -79,7 +79,6 @@ class VQVAEAutoencoder(nn.Module):
         z_q, loss, indices = self.vq(z)
         return self.decoder(z_q), loss, indices
 
-
 # ==========================================
 # POST-PROCESSING (RGB only)
 # ==========================================
@@ -90,24 +89,23 @@ def enhance_decoded(tensor):
     img = ImageEnhance.Color(img).enhance(1.15)
     return img
 
-
 # ==========================================
 # DECODE
 # ==========================================
 def decode(args):
-    is_thermal     = (args.mode == 'thermal')
-    in_channels    = 1 if is_thermal else 3
-    prefix         = args.mode
+    is_thermal = (args.mode == 'thermal')
+    in_channels = 1 if is_thermal else 3
+    prefix = args.mode
 
-    npy_path       = args.npy       or f'{prefix}_vqvae_indices.npy'
+    npy_path = args.npy or f'{prefix}_vqvae_indices.npy'
     filenames_path = args.filenames or f'{prefix}_vqvae_filenames.txt'
-    model_path     = args.model     or f'{prefix}_vqvae_best.pth'
-    output_dir     = args.output_dir or f'{prefix}_vqvae_decoded'
-    n              = args.n
+    model_path = args.model or f'{prefix}_vqvae_best.pth'
+    output_dir = args.output_dir or f'{prefix}_vqvae_decoded'
+    n = args.n
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Mode   : {args.mode.upper()}")
-    print(f"Device : {device}")
+    print(f"Mode        : {args.mode.upper()}")
+    print(f"Device      : {device}")
 
     model = VQVAEAutoencoder(in_channels=in_channels).to(device)
     ckpt = torch.load(model_path, map_location=device)
@@ -117,25 +115,30 @@ def decode(args):
     model.eval()
     print(f"Loaded model: {model_path}")
 
-    indices_all = np.load(npy_path).astype(np.int64)     # (N, 32, 32)
+    indices_all = np.load(npy_path).astype(np.int64)  # (N, 32, 32)
     with open(filenames_path) as f:
         filenames = f.read().splitlines()
 
-    print(f"Indices : {indices_all.shape}  dtype=uint16")
-    print(f"Storage : {indices_all.astype(np.uint16).nbytes/1024:.1f} KB for {len(filenames)} images")
-    print(f"vs raw  : {512*512*in_channels*len(filenames)/1024:.0f} KB uncompressed\n")
+    print(f"Indices     : {indices_all.shape} dtype=uint16")
+    print(f"Storage     : {indices_all.astype(np.uint16).nbytes/1024:.1f} KB for {len(filenames)} images")
+    print(f"vs raw      : {512*512*in_channels*len(filenames)/1024:.0f} KB uncompressed\n")
+
+    if args.stride > 1:
+        indices_all = indices_all[::args.stride]
+        filenames = filenames[::args.stride]
+        print(f"Stride      : {args.stride} -> {len(filenames)} images after striding\n")
 
     if n > 0:
         indices_all = indices_all[:n]
-        filenames   = filenames[:n]
+        filenames = filenames[:n]
 
     os.makedirs(output_dir, exist_ok=True)
-    total      = len(filenames)
+    total = len(filenames)
     batch_size = 32
     all_recons = []
 
     for start in range(0, total, batch_size):
-        end   = min(start + batch_size, total)
+        end = min(start + batch_size, total)
         batch = torch.tensor(indices_all[start:end], dtype=torch.long, device=device)
         with torch.no_grad():
             recon = model.decode_from_indices(batch).cpu().float()
@@ -155,17 +158,18 @@ def decode(args):
     # Overview grid (first 10)
     grid = make_grid(all_recons[:min(10, total)], nrow=5, padding=4, pad_value=1.0)
     vutils.save_image(grid, os.path.join(output_dir, f'grid_top{min(10,total)}.png'))
-    print(f"\n{total} images → '{output_dir}/'")
-
+    print(f"\n{total} images -> '{output_dir}/'")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Decode VQ-VAE indices to images')
-    parser.add_argument('--mode',       type=str, required=True, choices=['rgb', 'thermal'])
-    parser.add_argument('--npy',        type=str, default=None)
-    parser.add_argument('--filenames',  type=str, default=None)
-    parser.add_argument('--model',      type=str, default=None)
+    parser.add_argument('--mode', type=str, required=True, choices=['rgb', 'thermal'])
+    parser.add_argument('--npy', type=str, default=None)
+    parser.add_argument('--filenames', type=str, default=None)
+    parser.add_argument('--model', type=str, default=None)
     parser.add_argument('--output_dir', type=str, default=None)
-    parser.add_argument('--n',          type=int, default=10,
+    parser.add_argument('--n', type=int, default=10,
                         help='Images to decode (0=all, default=10)')
+    parser.add_argument('--stride', type=int, default=1,
+                        help='Take every Nth image from the dataset (default=1, no stride)')
     args = parser.parse_args()
     decode(args)
